@@ -1,0 +1,335 @@
+'use strict'
+
+const { F2PoolMinerPool } = require('./lib/f2pool.minerpool')
+const { TRANSACTION_TYPES, POOL_TYPE } = require('./lib/constants')
+const async = require('async')
+const TetherWrkBase = require('tether-wrk-base/workers/base.wrk.tether')
+const { getWorkersStats, getTimeRanges, isCurrentMonth, getMonthlyDateRanges } = require('./lib/utils')
+const { BTC_SATS, SCHEDULER_TIMES } = require('./lib/constants')
+const utilsStore = require('hp-svc-facs-store/utils')
+const gLibUtilBase = require('lib-js-util-base')
+const mingo = require('mingo')
+
+class WrkMinerPoolRackF2Pool extends TetherWrkBase {
+  constructor (conf, ctx) {
+    super(conf, ctx)
+
+    if (!ctx.rack) {
+      throw new Error('ERR_PROC_RACK_UNDEFINED')
+    }
+
+    this.prefix = `${this.wtype}-${ctx.rack}`
+    this.init()
+    this.start()
+
+    this.data = {
+      statsData: {},
+      workersData: { ts: 0, workers: [] },
+      blocks: [],
+      yearlyBalances: {}
+    }
+  }
+
+  init () {
+    super.init()
+
+    this.loadConf('f2pool', 'f2pool')
+    this.accounts = this.conf.f2pool.accounts
+    this.apiSecret = this.conf.f2pool.apiSecret
+
+    this.setInitFacs([
+      ['fac', 'bfx-facs-scheduler', '0', 'f2', {}, -10],
+      ['fac', 'hp-svc-facs-store', 's1', 's1', {
+        storePrimaryKey: this.ctx.storePrimaryKey,
+        storeDir: `store/${this.ctx.rack}-db`
+      }, 0],
+      ['fac', 'bfx-facs-http', '0', '0', {
+        baseUrl: this.conf.f2pool.apiUrl,
+        timeout: 30 * 1000
+      }, 0]
+    ])
+  }
+
+  _start (cb) {
+    async.series([
+      (next) => { super._start(next) },
+      async () => {
+        this.net_r0.rpcServer.respond('getWrkExtData', async (req) => {
+          return await this.net_r0.handleReply('getWrkExtData', req)
+        })
+
+        const db = await this.store_s1.getBee(
+          { name: 'f2pool' },
+          { keyEncoding: 'binary' }
+        )
+        await db.ready()
+        this.transactionsDb = db.sub('transactions')
+        this.workersCountDb = db.sub('workers-count')
+        this.statsDb = db.sub('stats')
+        this.workersDb = db.sub('workers')
+
+        this.f2poolApi = new F2PoolMinerPool(this.http_0, this.apiSecret)
+
+        for (const { time, key } of Object.values(SCHEDULER_TIMES)) {
+          this.scheduler_f2.add(key, (fireTime) => {
+            this.fetchData(key, fireTime)
+          }, time)
+        }
+      }
+    ], cb)
+  }
+
+  async fetchData (key, time) {
+    try {
+      switch (key) {
+        case SCHEDULER_TIMES._1M.key:
+          await this.fetchStats(time)
+          break
+        case SCHEDULER_TIMES._5M.key:
+          await this.fetchWorkers(time)
+          await this.saveStats(time)
+          break
+        case SCHEDULER_TIMES._1D.key:
+          await this.fetchTransactions()
+          await this.saveWorkers(time)
+          break
+      }
+    } catch (e) {
+      this._logErr('ERR_DATA_FETCH', e)
+    }
+  }
+
+  async _saveToDb (db, ts, data) {
+    await db.put(utilsStore.convIntToBin(ts), Buffer.from(JSON.stringify(data)))
+  }
+
+  _logErr (msg, err) {
+    console.error(new Date().toISOString(), msg, err)
+  }
+
+  async fetchStats (time) {
+    const stats = []
+
+    const end = Date.now()
+    const start24h = end - (24 * 60 * 60 * 1000) // 24 hours ago
+
+    for (const username of this.accounts) {
+      const { balance_info: bal = {} } = await this.f2poolApi.getBalance(username) || {}
+
+      const { hash_rate_list: hashRate24h = [] } = await this.f2poolApi.getHashRateHistory(username, start24h, end) || {}
+
+      const oneHourAgo = end - (60 * 60 * 1000)
+      const hashRate1h = hashRate24h.filter(item => item.timestamp * 1000 >= oneHourAgo)
+
+      const avgHashRate1h = hashRate1h.length > 0
+        ? hashRate1h.reduce((sum, item) => sum + (item.hash_rate || 0), 0) / hashRate1h.length
+        : 0
+
+      const avgHashRate24h = hashRate24h.length > 0
+        ? hashRate24h.reduce((sum, item) => sum + (item.hash_rate || 0), 0) / hashRate24h.length
+        : 0
+
+      const avgStaleHashRate1h = hashRate1h.length > 0
+        ? hashRate1h.reduce((sum, item) => sum + (item.stale_hash_rate || 0), 0) / hashRate1h.length
+        : 0
+
+      const avgStaleHashRate24h = hashRate24h.length > 0
+        ? hashRate24h.reduce((sum, item) => sum + (item.stale_hash_rate || 0), 0) / hashRate24h.length
+        : 0
+
+      const latestHashRate = hashRate24h.length > 0
+        ? hashRate24h[hashRate24h.length - 1].hash_rate || 0
+        : 0
+
+      const yearlyBalances = await this.getYearlyBalances(username)
+      const activeWorkers = this.data.workersData.workers.filter(worker => worker.online)
+
+      stats.push({
+        username,
+        timestamp: Date.now(),
+        balance: bal.total_income,
+        unsettled: bal.total_income - bal.paid,
+        revenue_24h: bal.yesterday_income,
+        estimated_today_income: bal.estimated_today_income,
+        hashrate: latestHashRate,
+        hashrate_1h: avgHashRate1h,
+        hashrate_24h: avgHashRate24h,
+        hashrate_stale_1h: avgStaleHashRate1h,
+        hashrate_stale_24h: avgStaleHashRate24h,
+        worker_count: this.data.workersData.workers.length,
+        active_workers_count: activeWorkers.length,
+        yearlyBalances
+      })
+    }
+    this.data.statsData = { ts: Math.floor(time.getTime() / 1000) * 1000, stats }
+  }
+
+  async saveStats (time) {
+    const ts = Math.floor(time.getTime() / 1000) * 1000
+    await this._saveToDb(this.statsDb, ts, { ts, stats: this.data.statsData.stats })
+  }
+
+  async saveWorkers (time) {
+    const ts = Math.floor(time.getTime() / 1000) * 1000
+    await this._saveToDb(this.workersDb, ts, { ts, workers: this.data.workersData.workers })
+  }
+
+  async fetchWorkers (time) {
+    let workers = []
+    for (const username of this.accounts) {
+      try {
+        const userWorkers = getWorkersStats(await this.f2poolApi.getWorkers(username), username)
+        workers = workers.concat(userWorkers)
+      } catch (e) {
+        this._logErr(`ERR_WORKERS_FETCH ${username}`, e)
+      }
+    }
+    const ts = Math.floor(time.getTime() / 1000) * 1000
+    this.data.workersData = { ts, workers }
+    await this._saveToDb(this.workersCountDb, ts, { ts, count: workers.length })
+  }
+
+  async fetchTransactions () {
+    let transactions = []
+    const startTime = new Date().setHours(0, 0, 0, 0)
+    const endTime = Date.now()
+    for (const username of this.accounts) {
+      try {
+        let dailyTransactions = await this.f2poolApi.getTransactions(startTime, endTime, TRANSACTION_TYPES.REVENUE, username)
+        dailyTransactions = dailyTransactions.map(t => ({ username, ...t }))
+        transactions = transactions.concat(dailyTransactions)
+      } catch (e) {
+        this._logErr(`ERR_TRANSACTIONS_FETCH ${username}`, e)
+      }
+    }
+
+    await this._saveToDb(this.transactionsDb, startTime, { ts: startTime, transactions })
+  }
+
+  async getYearlyBalances (username) {
+    // fetch transactions of last 12 months, skip the ones already fetched unless current month
+    const yearlyDateRanges = getMonthlyDateRanges(12)
+    const balances = this.data.yearlyBalances
+    for (const [month, { startDate, endDate }] of Object.entries(yearlyDateRanges)) {
+      if (!balances[month] || isCurrentMonth(month)) {
+        try {
+          const transactions = await this.f2poolApi.getTransactions(startDate, endDate, TRANSACTION_TYPES.REVENUE, username)
+          balances[month] = transactions.reduce((bal, t) => bal + t.changed_balance, 0)
+        } catch (e) {
+          this._logErr('ERR_BALANCES_FETCH', e)
+          balances[month] = 0
+        }
+      }
+    }
+    this.data.yearlyBalances = balances
+    return Object.entries(balances).map(([month, balance]) => ({ month, balance }))
+  }
+
+  _aggrTransactions (data, { start, end }) {
+    // aggr hourly revenue
+    const totalRevenue = data.reduce((total, log) => {
+      log.transactions?.forEach((transaction) => {
+        total += transaction.satoshis_net_earned
+      })
+      return total
+    }, 0)
+    const tsRange = getTimeRanges(start, end)
+    const hourlyRevenues = []
+    if (!tsRange.length) return { ts: Date.now(), hourlyRevenues }
+    const hourlyAvgRevenue = (totalRevenue / tsRange.length) / BTC_SATS
+    tsRange.forEach(({ end }) => {
+      hourlyRevenues.push({ ts: end, revenue: hourlyAvgRevenue })
+    })
+
+    return { ts: Date.now(), hourlyRevenues }
+  }
+
+  async getDbData (db, { start, end }) {
+    if (!start) throw new Error('ERR_START_INVALID')
+    if (!end) throw new Error('ERR_END_INVALID')
+
+    const query = {
+      gte: utilsStore.convIntToBin(start),
+      lte: utilsStore.convIntToBin(end)
+    }
+
+    const stream = db.createReadStream(query)
+    const res = []
+    for await (const entry of stream) {
+      res.push(JSON.parse(entry.value.toString()))
+    }
+
+    return res
+  }
+
+  _projection (data, fields = {}) {
+    const query = new mingo.Query({})
+    if (Array.isArray(data)) return query.find(data, fields).all()
+    const cursor = query.find([data], fields)
+    return cursor.all()[0]
+  }
+
+  filterWorkers (workers, offset, limit) {
+    return workers.slice(offset, offset + (Math.min(limit, 100)))
+  }
+
+  async getWorkers (query) {
+    const { offset = 0, limit = 100, name, start, end } = query
+    if (!start || !end) {
+      const workersObj = { ts: 0, workers: this.filterWorkers(this.data.workersData.workers, offset, limit) }
+      workersObj.workers = this.appendPoolType(workersObj.workers)
+      return workersObj
+    }
+    const data = await this.getDbData(this.workersDb, query)
+    return data.reduce((aggr, obj) => {
+      let workersObj
+      if (name) workersObj = { ts: obj.ts, workers: obj.workers.filter(w => w.name === name) }
+      else workersObj = { ts: obj.ts, workers: this.filterWorkers(obj.workers, offset, limit) }
+      workersObj.workers = this.appendPoolType(workersObj.workers)
+      aggr = aggr.concat(workersObj)
+      return aggr
+    }, [])
+  }
+
+  appendPoolType (data) {
+    return data.map(d => ({ poolType: POOL_TYPE, ...d }))
+  }
+
+  async getWrkExtData (req) {
+    const { query } = req
+    if (!query) throw new Error('ERR_QUERY_INVALID')
+
+    const { key } = query
+    if (!key) throw new Error('ERR_KEY_INVALID')
+
+    let data
+    switch (key) {
+      case 'transactions':
+        data = await this.getDbData(this.transactionsDb, query)
+        if (query.aggrHourly) data = this._aggrTransactions(data, query)
+        break
+      case 'workers-count':
+        data = await this.getDbData(this.workersCountDb, query)
+        break
+      case 'workers':
+        data = this.getWorkers(query)
+        break
+      case 'stats':
+        data = this.data.statsData
+        if (data.stats) data.stats = this.appendPoolType(data.stats)
+        break
+      case 'stats-history':
+        data = await this.getDbData(this.statsDb, query)
+        data.forEach(d => { if (d.stats) d.stats = this.appendPoolType(d.stats) })
+        break
+      default:
+        data = this.data[key]
+        break
+    }
+
+    if (!gLibUtilBase.isEmpty(query.fields)) return this._projection(data, query.fields)
+    return data
+  }
+}
+
+module.exports = WrkMinerPoolRackF2Pool
