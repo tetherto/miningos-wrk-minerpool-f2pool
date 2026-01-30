@@ -9,6 +9,7 @@ const STAT_WORKERS = 'stat-workers'
 const STAT_TRANSACTIONS = 'stat-transactions'
 const MINERPOOL_TAG = 't-minerpool'
 const CURRENCY = 'bitcoin'
+const MINUTE_MS = 60 * 1000
 const HOUR_MS = 60 * 60 * 1000
 const HOURS_24_MS = 24 * 60 * 60 * 1000
 const POOL_TYPE = 'f2pool'
@@ -28,6 +29,7 @@ module.exports = {
   MINERPOOL_TAG,
   CURRENCY,
   SCHEDULER_TIMES,
+  MINUTE_MS,
   HOUR_MS,
   HOURS_24_MS,
   POOL_TYPE,
