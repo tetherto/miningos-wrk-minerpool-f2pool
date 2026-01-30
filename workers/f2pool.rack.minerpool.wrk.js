@@ -1,7 +1,7 @@
 'use strict'
 
 const { F2PoolMinerPool } = require('./lib/f2pool.minerpool')
-const { TRANSACTION_TYPES, POOL_TYPE } = require('./lib/constants')
+const { TRANSACTION_TYPES, POOL_TYPE, MINUTE_MS, HOUR_MS, HOURS_24_MS } = require('./lib/constants')
 const async = require('async')
 const TetherWrkBase = require('tether-wrk-base/workers/base.wrk.tether')
 const { getWorkersStats, getTimeRanges, isCurrentMonth, getMonthlyDateRanges } = require('./lib/utils')
@@ -244,6 +244,43 @@ class WrkMinerPoolRackF2Pool extends TetherWrkBase {
     return { ts: Date.now(), hourlyRevenues }
   }
 
+  _getIntervalMs (interval) {
+    switch (interval) {
+      case '1D':
+        return HOURS_24_MS
+      case '3h':
+        return 3 * HOUR_MS
+      case '30m':
+        return 30 * MINUTE_MS
+      case '5m':
+      default:
+        return 5 * MINUTE_MS
+    }
+  }
+
+  _aggrHashrate (s, d) {
+    return {
+      ...d,
+      hashrate: (s.hashrate + d.hashrate) / 2
+    }
+  }
+
+  _aggrByInterval (data, interval) {
+    const intervalMs = this._getIntervalMs(interval)
+    const aggrData = {}
+    data.forEach(d => {
+      const aggrTimestamp = Math.ceil(d.ts / intervalMs) * intervalMs
+      if (!aggrData[aggrTimestamp]) {
+        aggrData[aggrTimestamp] = { ...d, ts: aggrTimestamp }
+      } else {
+        aggrData[aggrTimestamp].stats = aggrData[aggrTimestamp].stats.map(
+          (s, index) => this._aggrHashrate(s, d.stats[index])
+        )
+      }
+    })
+    return Object.values(aggrData)
+  }
+
   async getDbData (db, { start, end }) {
     if (!start) throw new Error('ERR_START_INVALID')
     if (!end) throw new Error('ERR_END_INVALID')
@@ -320,6 +357,7 @@ class WrkMinerPoolRackF2Pool extends TetherWrkBase {
         break
       case 'stats-history':
         data = await this.getDbData(this.statsDb, query)
+        if (query.interval) data = this._aggrByInterval(data, query.interval)
         data.forEach(d => { if (d.stats) d.stats = this.appendPoolType(d.stats) })
         break
       default:
