@@ -272,27 +272,45 @@ test('WrkMinerPoolRackF2Pool: _aggrByInterval should aggregate data correctly', 
   const worker = createMockWorker()
   const data = [
     {
+      ts: new Date('2024-01-01T00:15:00Z').getTime(),
+      stats: [
+        { hashrate: 1000000, hashrate_1h: 1000000 },
+        { hashrate: 2000000, hashrate_1h: 2000000 }
+      ]
+    },
+    {
+      ts: new Date('2024-01-01T00:20:00Z').getTime(),
+      stats: [
+        { hashrate: 1000000, hashrate_1h: 1000000 },
+        { hashrate: 2000000, hashrate_1h: 2000000 }
+      ]
+    },
+    {
       ts: new Date('2024-01-01T00:25:00Z').getTime(),
       stats: [
-        { hashrate: 1000000, hashrate_1h: 1000000 }
+        { hashrate: 1000000, hashrate_1h: 1000000 },
+        { hashrate: 2000000, hashrate_1h: 2000000 }
       ]
     },
     {
       ts: new Date('2024-01-01T00:30:00Z').getTime(),
       stats: [
-        { hashrate: 2000000, hashrate_1h: 2000000 }
+        { hashrate: 2000000, hashrate_1h: 2000000 },
+        { hashrate: 3000000, hashrate_1h: 3000000 }
       ]
     },
     {
       ts: new Date('2024-01-01T00:35:00Z').getTime(),
       stats: [
-        { hashrate: 3000000, hashrate_1h: 3000000 }
+        { hashrate: 3000000, hashrate_1h: 3000000 },
+        { hashrate: 4000000, hashrate_1h: 4000000 }
       ]
     },
     {
       ts: new Date('2024-01-01T00:40:00Z').getTime(),
       stats: [
-        { hashrate: 4000000, hashrate_1h: 4000000 }
+        { hashrate: 4000000, hashrate_1h: 4000000 },
+        { hashrate: 5000000, hashrate_1h: 5000000 }
       ]
     }
   ]
@@ -303,11 +321,15 @@ test('WrkMinerPoolRackF2Pool: _aggrByInterval should aggregate data correctly', 
   t.ok(result)
   t.ok(result.length === 2)
   t.ok(result[0].ts === new Date('2024-01-01T00:30:00Z').getTime())
-  t.ok(result[0].stats[0].hashrate === 1500000)
+  t.ok(result[0].stats[0].hashrate === 1250000)
   t.ok(result[0].stats[0].hashrate_1h === 2000000)
+  t.ok(result[0].stats[1].hashrate === 2250000)
+  t.ok(result[0].stats[1].hashrate_1h === 3000000)
   t.ok(result[1].ts === new Date('2024-01-01T01:00:00Z').getTime())
   t.ok(result[1].stats[0].hashrate === 3500000)
   t.ok(result[1].stats[0].hashrate_1h === 4000000)
+  t.ok(result[1].stats[1].hashrate === 4500000)
+  t.ok(result[1].stats[1].hashrate_1h === 5000000)
 })
 
 test('WrkMinerPoolRackF2Pool: getWrkExtData should throw error when query is invalid', async (t) => {
