@@ -116,32 +116,52 @@ class WrkMinerPoolRackF2Pool extends TetherWrkBase {
     for (const username of this.accounts) {
       const { balance_info: bal = {} } = await this.f2poolApi.getBalance(username) || {}
 
-      const { hash_rate_list: hashRate24h = [] } = await this.f2poolApi.getHashRateHistory(username, start24h, end) || {}
+      let hashRate24h = []
+      try {
+        const histResp = await this.f2poolApi.getHashRateHistory(username, start24h, end) || {}
+        hashRate24h = histResp.hash_rate_list || []
+      } catch (e) {
+        this._logErr('ERR_HASH_RATE_HISTORY', e)
+      }
+
+      // Fallback: use getHashRateInfo for live hashrate when history is unavailable
+      let liveInfo = {}
+      try {
+        const infoResp = await this.f2poolApi.getHashRateInfo(username) || {}
+        liveInfo = infoResp.info || {}
+      } catch (e) {
+        this._logErr('ERR_HASH_RATE_INFO', e)
+      }
 
       const oneHourAgo = end - (60 * 60 * 1000)
       const hashRate1h = hashRate24h.filter(item => item.timestamp * 1000 >= oneHourAgo)
 
       const avgHashRate1h = hashRate1h.length > 0
         ? hashRate1h.reduce((sum, item) => sum + (item.hash_rate || 0), 0) / hashRate1h.length
-        : 0
+        : (liveInfo.h1_hash_rate || 0)
 
       const avgHashRate24h = hashRate24h.length > 0
         ? hashRate24h.reduce((sum, item) => sum + (item.hash_rate || 0), 0) / hashRate24h.length
-        : 0
+        : (liveInfo.h24_hash_rate || 0)
 
       const avgStaleHashRate1h = hashRate1h.length > 0
         ? hashRate1h.reduce((sum, item) => sum + (item.stale_hash_rate || 0), 0) / hashRate1h.length
-        : 0
+        : (liveInfo.h1_stale_hash_rate || 0)
 
       const avgStaleHashRate24h = hashRate24h.length > 0
         ? hashRate24h.reduce((sum, item) => sum + (item.stale_hash_rate || 0), 0) / hashRate24h.length
-        : 0
+        : (liveInfo.h24_stale_hash_rate || 0)
 
       const latestHashRate = hashRate24h.length > 0
         ? hashRate24h[hashRate24h.length - 1].hash_rate || 0
-        : 0
+        : (liveInfo.hash_rate || 0)
 
-      const yearlyBalances = await this.getYearlyBalances(username)
+      let yearlyBalances = {}
+      try {
+        yearlyBalances = await this.getYearlyBalances(username)
+      } catch (e) {
+        this._logErr('ERR_YEARLY_BALANCES', e)
+      }
       const activeWorkers = this.data.workersData.workers.filter(worker => worker.online)
 
       stats.push({
