@@ -371,6 +371,77 @@ test('WrkMinerPoolRackF2Pool: getWrkExtData should return stats data', async (t)
   t.is(result.stats[0].poolType, POOL_TYPE)
 })
 
+test('WrkMinerPoolRackF2Pool: getWrkExtData stats omits appendPoolType when stats missing', async (t) => {
+  const worker = createMockWorker()
+  worker.data.statsData = { ts: 1000 }
+
+  const result = await worker.getWrkExtData({ query: { key: 'stats' } })
+  t.ok(result)
+  t.is(result.ts, 1000)
+  t.is(result.stats, undefined)
+})
+
+test('WrkMinerPoolRackF2Pool: getWrkExtData stats-history with appendPoolType', async (t) => {
+  const worker = createMockWorker()
+  worker.statsDb = {
+    createReadStream () {
+      return [
+        {
+          value: Buffer.from(JSON.stringify({
+            ts: new Date('2024-01-01T00:10:00Z').getTime(),
+            stats: [{ hashrate: 1000000, hashrate_1h: 1000000 }]
+          }))
+        }
+      ]
+    }
+  }
+
+  const result = await worker.getWrkExtData({
+    query: { key: 'stats-history', start: 1, end: 2000000000000 }
+  })
+  t.ok(Array.isArray(result))
+  t.is(result[0].stats[0].poolType, POOL_TYPE)
+})
+
+test('WrkMinerPoolRackF2Pool: getWrkExtData stats-history with interval aggregation', async (t) => {
+  const worker = createMockWorker()
+  worker.statsDb = {
+    createReadStream () {
+      return [
+        {
+          value: Buffer.from(JSON.stringify({
+            ts: new Date('2024-01-01T00:10:00Z').getTime(),
+            stats: [
+              { hashrate: 1000000, hashrate_1h: 1000000 },
+              { hashrate: 2000000, hashrate_1h: 2000000 }
+            ]
+          }))
+        },
+        {
+          value: Buffer.from(JSON.stringify({
+            ts: new Date('2024-01-01T00:20:00Z').getTime(),
+            stats: [
+              { hashrate: 3000000, hashrate_1h: 3000000 },
+              { hashrate: 4000000, hashrate_1h: 4000000 }
+            ]
+          }))
+        }
+      ]
+    }
+  }
+
+  const result = await worker.getWrkExtData({
+    query: { key: 'stats-history', start: 1, end: 2000000000000, interval: '30m' }
+  })
+  t.ok(Array.isArray(result))
+  t.ok(result.length >= 1)
+  result.forEach(row => {
+    if (row.stats) {
+      row.stats.forEach(s => t.is(s.poolType, POOL_TYPE))
+    }
+  })
+})
+
 test('WrkMinerPoolRackF2Pool: getWrkExtData should return default data for unknown key', async (t) => {
   const worker = createMockWorker()
   worker.data.testKey = { test: 'value' }

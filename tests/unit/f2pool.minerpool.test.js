@@ -41,6 +41,32 @@ test('F2PoolMinerPool: getBalance should call _request with correct parameters',
   t.is(result.balance_info.total_income, 1000)
 })
 
+test('F2PoolMinerPool: getHashRateHistory should call _request with converted seconds', async (t) => {
+  const startMs = new Date('2024-01-01T00:00:00Z').getTime()
+  const endMs = new Date('2024-01-01T06:00:00Z').getTime()
+  const mockHttp = {
+    post: async (path, options) => {
+      t.is(path, '/v2/hash_rate/history')
+      t.is(options.body.mining_user_name, 'testuser')
+      t.is(options.body.currency, CURRENCY)
+      t.is(options.body.start_time, Math.floor(startMs / 1000))
+      t.is(options.body.end_time, Math.floor(endMs / 1000))
+      return {
+        body: {
+          hash_rate_list: [{ ts: 1, hash_rate: 100 }]
+        }
+      }
+    }
+  }
+
+  const client = new F2PoolMinerPool(mockHttp, 'test-secret')
+  const result = await client.getHashRateHistory('testuser', startMs, endMs)
+
+  t.ok(result)
+  t.ok(Array.isArray(result.hash_rate_list))
+  t.is(result.hash_rate_list.length, 1)
+})
+
 test('F2PoolMinerPool: getHashRateInfo should call _request with correct parameters', async (t) => {
   const mockHttp = {
     post: async (path, options) => {

@@ -103,6 +103,22 @@ test('F2Pool API Client: should fetch hashrate info from mock server', async (t)
   t.is(result.info.name, 'testuser')
 })
 
+test('F2Pool API Client: should fetch hashrate history from mock server', async (t) => {
+  const apiSecret = 'secret-key'
+  const client = new F2PoolMinerPool(httpClient, apiSecret)
+
+  const startMs = new Date('2024-01-01T00:00:00Z').getTime()
+  const endMs = new Date('2024-01-01T06:00:00Z').getTime()
+  const first = await client.getHashRateHistory('testuser', startMs, endMs)
+
+  t.ok(first)
+  t.ok(Array.isArray(first.hash_rate_list))
+  t.ok(first.hash_rate_list.length > 0)
+
+  const second = await client.getHashRateHistory('testuser', startMs, endMs)
+  t.is(second.hash_rate_list.length, first.hash_rate_list.length)
+})
+
 test('F2Pool API Client: should fetch workers from mock server', async (t) => {
   const apiSecret = 'secret-key'
   const client = new F2PoolMinerPool(httpClient, apiSecret)
@@ -278,8 +294,33 @@ test('Integration: should process worker status correctly', async (t) => {
   })
 })
 
+test('Integration: mock minerpool worker endpoint adds worker', async (t) => {
+  const suffix = Math.random().toString(36).slice(2, 12)
+  const res = await makeRequest(mockServerPort, '/mock/minerpool/worker', {
+    body: {
+      name: `pool.wrk_${suffix}`,
+      host: '10.0.0.1'
+    },
+    headers: { 'F2P-API-SECRET': 'secret-key' }
+  })
+  t.is(res.statusCode, 200)
+  t.ok(res.body.success)
+})
+
+test('Integration: mock minerpool worker endpoint rejects missing name', async (t) => {
+  const res = await makeRequest(mockServerPort, '/mock/minerpool/worker', {
+    body: { host: '10.0.0.2' },
+    headers: { 'F2P-API-SECRET': 'secret-key' }
+  })
+  t.is(res.statusCode, 200)
+  t.is(res.body.success, false)
+  t.ok(String(res.body.error).includes('ERR_INVALID_NAME'))
+})
+
 test('teardown: stop mock server', async (t) => {
   if (mockServer) {
+    const state = mockServer.reset()
+    t.ok(state)
     await mockServer.stop()
     t.pass('Mock server stopped')
   }
