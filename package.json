@@ -20,7 +20,7 @@
     "test": "npm run lint && npm run test:unit && npm run test:integration",
     "test:unit": "brittle tests/unit/*.js",
     "test:integration": "NODE_ENV=test brittle ./tests/integration/f2pool.test.js",
-    "test:coverage": "brittle --coverage tests/{,**/}*.test.js"
+    "test:coverage": "brittle --coverage tests/**/*.test.js"
   },
   "dependencies": {
     "@bitfinex/lib-js-util-base": "git+https://github.com/bitfinexcom/lib-js-util-base.git",
