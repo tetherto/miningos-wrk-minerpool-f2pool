@@ -117,20 +117,18 @@ class WrkMinerPoolRackF2Pool extends TetherWrkBase {
       const { balance_info: bal = {} } = await this.f2poolApi.getBalance(username) || {}
 
       let hashRate24h = []
+      let liveInfo = {}
       try {
         const histResp = await this.f2poolApi.getHashRateHistory(username, start24h, end) || {}
         hashRate24h = histResp.hash_rate_list || []
       } catch (e) {
         this._logErr('ERR_HASH_RATE_HISTORY', e)
-      }
-
-      // Fallback: use getHashRateInfo for live hashrate when history is unavailable
-      let liveInfo = {}
-      try {
-        const infoResp = await this.f2poolApi.getHashRateInfo(username) || {}
-        liveInfo = infoResp.info || {}
-      } catch (e) {
-        this._logErr('ERR_HASH_RATE_INFO', e)
+        try {
+          const infoResp = await this.f2poolApi.getHashRateInfo(username) || {}
+          liveInfo = infoResp.info || {}
+        } catch (e2) {
+          this._logErr('ERR_HASH_RATE_INFO', e2)
+        }
       }
 
       const oneHourAgo = end - (60 * 60 * 1000)
