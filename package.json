@@ -1,6 +1,6 @@
 {
   "name": "miningos-wrk-minerpool-f2pool",
-  "version": "0.0.6",
+  "version": "0.0.1",
   "description": "F2Pool miner pool worker",
   "keywords": [
     "tether"
@@ -11,9 +11,23 @@
     "type": "git",
     "url": "git+https://github.com/tetherto/miningos-wrk-minerpool-f2pool.git"
   },
-  "engine": {
-    "node": ">=20.0"
+  "homepage": "https://github.com/tetherto/miningos-wrk-minerpool-f2pool#readme",
+  "bugs": {
+    "url": "https://github.com/tetherto/miningos-wrk-minerpool-f2pool/issues"
+  },  
+  "engines": {
+    "node": ">=20"
   },
+  "files": [
+    "worker.js",
+    "workers/",
+    "mock/"
+  ],
+  "main": "worker.js",  
+  "type": "commonjs",
+  "bin": {
+    "miningos-wrk-minerpool-f2pool": "worker.js"
+  },     
   "scripts": {
     "lint": "standard",
     "lint:fix": "standard --fix",
