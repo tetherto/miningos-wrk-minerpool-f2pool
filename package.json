@@ -1,5 +1,5 @@
 {
-  "name": "miningos-wrk-minerpool-f2pool",
+  "name": "@tetherto/miningos-wrk-minerpool-f2pool",
   "version": "0.0.1",
   "description": "F2Pool miner pool worker",
   "keywords": [
@@ -34,22 +34,23 @@
     "test": "npm run lint && npm run test:unit && npm run test:integration",
     "test:unit": "brittle tests/unit/*.js",
     "test:integration": "NODE_ENV=test brittle ./tests/integration/f2pool.test.js",
-    "test:coverage": "brittle --coverage tests/**/*.test.js"
+    "test:coverage": "brittle --coverage tests/**/*.test.js",
+    "dev": "node worker.js --wtype wrk-minerpool-rack-f2pool --env development --rack rack-1"
   },
   "dependencies": {
+    "@bitfinex/bfx-svc-boot-js": "1.2.0",
     "@bitfinex/lib-js-util-base": "git+https://github.com/bitfinexcom/lib-js-util-base.git",
-    "bfx-facs-http": "git+https://github.com/bitfinexcom/bfx-facs-http.git",
-    "bfx-facs-scheduler": "git+https://github.com/bitfinexcom/bfx-facs-scheduler.git",
-    "lib-js-util-base": "git+https://github.com/bitfinexcom/lib-js-util-base.git",
+    "@bitfinex/bfx-facs-http": "git+https://github.com/bitfinexcom/bfx-facs-http.git",
+    "@bitfinex/bfx-facs-scheduler": "git+https://github.com/bitfinexcom/bfx-facs-scheduler.git",
     "mingo": "6.5.6",
-    "tether-wrk-base": "git+https://github.com/tetherto/tether-wrk-base.git"
+    "@tetherto/tether-wrk-base": "git+https://github.com/tetherto/tether-wrk-base.git#v1.0.0"
   },
   "devDependencies": {
-    "@fastify/secure-session": "7.3.0",
+    "@fastify/secure-session": "8.3.0",
     "brittle": "3.16.3",
     "date-fns": "3.6.0",
-    "fastify": "4.29.1",
-    "miningos-mock-control-service": "git+https://github.com/tetherto/miningos-mock-control-service.git",
+    "fastify": "5.8.5",
+    "@tetherto/miningos-mock-control-service": "git+https://github.com/tetherto/miningos-mock-control-service.git",
     "standard": "17.1.2"
   }
 }

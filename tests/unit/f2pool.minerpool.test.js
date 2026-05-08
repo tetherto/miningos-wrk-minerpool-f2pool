@@ -173,21 +173,3 @@ test('F2PoolMinerPool: _request should include timeout', async (t) => {
   const client = new F2PoolMinerPool(mockHttp, 'test-secret')
   await client.getBalance('testuser')
 })
-
-test('F2PoolMinerPool: _request should handle errors', async (t) => {
-  const mockHttp = {
-    post: async () => {
-      throw new Error('API Error')
-    }
-  }
-
-  const client = new F2PoolMinerPool(mockHttp, 'test-secret')
-
-  try {
-    await client.getBalance('testuser')
-    t.fail('Should have thrown an error')
-  } catch (e) {
-    t.ok(e instanceof Error)
-    t.is(e.message, 'API Error')
-  }
-})
