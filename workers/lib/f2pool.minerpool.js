@@ -16,14 +16,19 @@ class F2PoolMinerPool {
   async _request (apiPath, payload) {
     // waiting between calls due to api rate limits
     await sleep(1000)
-    const { body: resp } = await this._http.post(apiPath, {
-      headers: { 'F2P-API-SECRET': this.apiSecret },
-      encoding: 'json',
-      body: payload,
-      timeout: 30 * 1000
-    })
+    try {
+      const { body: resp } = await this._http.post(apiPath, {
+        headers: { 'F2P-API-SECRET': this.apiSecret },
+        encoding: 'json',
+        body: payload,
+        timeout: 30 * 1000
+      })
 
-    return resp
+      return resp
+    } catch (e) {
+      console.error('ERR_REQUEST_API', e)
+    }
+    return {}
   }
 
   async getBalance (username) {

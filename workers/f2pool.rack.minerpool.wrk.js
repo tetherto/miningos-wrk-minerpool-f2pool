@@ -3,11 +3,11 @@
 const { F2PoolMinerPool } = require('./lib/f2pool.minerpool')
 const { TRANSACTION_TYPES, POOL_TYPE, MINUTE_MS, HOUR_MS, HOURS_24_MS } = require('./lib/constants')
 const async = require('async')
-const TetherWrkBase = require('tether-wrk-base/workers/base.wrk.tether')
+const TetherWrkBase = require('@tetherto/tether-wrk-base/workers/base.wrk.tether')
 const { getWorkersStats, getTimeRanges, isCurrentMonth, getMonthlyDateRanges } = require('./lib/utils')
 const { BTC_SATS, SCHEDULER_TIMES } = require('./lib/constants')
-const utilsStore = require('hp-svc-facs-store/utils')
-const gLibUtilBase = require('lib-js-util-base')
+const utilsStore = require('@tetherto/hp-svc-facs-store/utils')
+const gLibUtilBase = require('@bitfinex/lib-js-util-base')
 const mingo = require('mingo')
 
 class WrkMinerPoolRackF2Pool extends TetherWrkBase {
@@ -38,12 +38,12 @@ class WrkMinerPoolRackF2Pool extends TetherWrkBase {
     this.apiSecret = this.conf.f2pool.apiSecret
 
     this.setInitFacs([
-      ['fac', 'bfx-facs-scheduler', '0', 'f2', {}, -10],
-      ['fac', 'hp-svc-facs-store', 's1', 's1', {
+      ['fac', '@bitfinex/bfx-facs-scheduler', '0', 'f2', {}, -10],
+      ['fac', '@tetherto/hp-svc-facs-store', 's1', 's1', {
         storePrimaryKey: this.ctx.storePrimaryKey,
         storeDir: `store/${this.ctx.rack}-db`
       }, 0],
-      ['fac', 'bfx-facs-http', '0', '0', {
+      ['fac', '@bitfinex/bfx-facs-http', '0', '0', {
         baseUrl: this.conf.f2pool.apiUrl,
         timeout: 30 * 1000
       }, 0]
