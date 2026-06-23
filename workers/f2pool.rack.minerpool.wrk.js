@@ -339,6 +339,19 @@ class WrkMinerPoolRackF2Pool extends TetherWrkBase {
     return data.map(d => ({ poolType: POOL_TYPE, ...d }))
   }
 
+  getDatumStats () {
+    // no datum support, set empty vals
+    return {
+      datum: {
+        poolType: POOL_TYPE,
+        status: null,
+        error: null,
+        connections: null,
+        hashrate: null
+      }
+    }
+  }
+
   async getWrkExtData (req) {
     const { query } = req
     if (!query) throw new Error('ERR_QUERY_INVALID')
@@ -361,6 +374,10 @@ class WrkMinerPoolRackF2Pool extends TetherWrkBase {
       case 'stats':
         data = this.data.statsData
         if (data.stats) data.stats = this.appendPoolType(data.stats)
+        data.datum = (this.getDatumStats()).datum
+        break
+      case 'datum-stats':
+        data = await this.getDatumStats()
         break
       case 'stats-history':
         data = await this.getDbData(this.statsDb, query)
