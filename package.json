@@ -37,5 +37,8 @@
     "fastify": "4.29.1",
     "miningos-mock-control-service": "git+https://github.com/tetherto/miningos-mock-control-service.git",
     "standard": "17.1.2"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }
