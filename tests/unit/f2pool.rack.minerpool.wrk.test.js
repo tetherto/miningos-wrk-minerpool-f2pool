@@ -242,6 +242,16 @@ test('WrkMinerPoolRackF2Pool: getDbData should read from database stream', async
   t.is(result[1].data, 'test2')
 })
 
+test('WrkMinerPoolRackF2Pool: _aggrTransactions returns empty hourly when start >= end', (t) => {
+  const worker = createMockWorker()
+  const result = worker._aggrTransactions(
+    [{ transactions: [{ satoshis_net_earned: 1 }] }],
+    { start: 200, end: 100 }
+  )
+  t.ok(Array.isArray(result.hourlyRevenues))
+  t.is(result.hourlyRevenues.length, 0)
+})
+
 test('WrkMinerPoolRackF2Pool: _aggrTransactions should aggregate transactions correctly', (t) => {
   const worker = createMockWorker()
   const data = [
@@ -332,6 +342,21 @@ test('WrkMinerPoolRackF2Pool: _aggrByInterval should aggregate data correctly', 
   t.ok(result[1].stats[1].hashrate_1h === 5000000)
 })
 
+test('WrkMinerPoolRackF2Pool: _aggrByInterval uses 1D and 3h interval sizes', (t) => {
+  const worker = createMockWorker()
+  const ts = new Date('2024-01-01T00:00:00Z').getTime()
+  const row = {
+    ts,
+    stats: [{ hashrate: 1e6, hashrate_1h: 1e6 }]
+  }
+  const oneD = worker._aggrByInterval([row], '1D')
+  const threeH = worker._aggrByInterval([row], '3h')
+  const fiveM = worker._aggrByInterval([row], '5m')
+  t.ok(oneD.length >= 1)
+  t.ok(threeH.length >= 1)
+  t.ok(fiveM.length >= 1)
+})
+
 test('WrkMinerPoolRackF2Pool: getWrkExtData should throw error when query is invalid', async (t) => {
   const worker = createMockWorker()
 
@@ -369,6 +394,164 @@ test('WrkMinerPoolRackF2Pool: getWrkExtData should return stats data', async (t)
   t.ok(result)
   t.ok(result.stats)
   t.is(result.stats[0].poolType, POOL_TYPE)
+})
+
+test('WrkMinerPoolRackF2Pool: getWrkExtData applies projection when fields set', async (t) => {
+  const worker = createMockWorker()
+  worker.data.report = [
+    { username: 'u1', balance: 100 },
+    { username: 'u2', balance: 200 }
+  ]
+
+  const result = await worker.getWrkExtData({
+    query: { key: 'report', fields: { username: 1 } }
+  })
+  t.ok(Array.isArray(result))
+  t.is(result.length, 2)
+  t.is(result[0].username, 'u1')
+  t.is(result[0].balance, undefined)
+})
+
+test('WrkMinerPoolRackF2Pool: getWrkExtData transactions with aggrHourly', async (t) => {
+  const worker = createMockWorker()
+  worker.transactionsDb = {
+    createReadStream () {
+      return [
+        {
+          value: Buffer.from(JSON.stringify({
+            ts: 1000,
+            transactions: [{ satoshis_net_earned: 1e8 }]
+          }))
+        }
+      ]
+    }
+  }
+  const start = new Date('2024-01-01T00:00:00Z').getTime()
+  const end = new Date('2024-01-01T02:00:00Z').getTime()
+  const result = await worker.getWrkExtData({
+    query: {
+      key: 'transactions',
+      start,
+      end,
+      aggrHourly: true
+    }
+  })
+  t.ok(result)
+  t.ok(Array.isArray(result.hourlyRevenues))
+})
+
+test('WrkMinerPoolRackF2Pool: getWrkExtData workers-count from db', async (t) => {
+  const worker = createMockWorker()
+  worker.workersCountDb = {
+    createReadStream () {
+      return [
+        { value: Buffer.from(JSON.stringify({ ts: 1000, count: 3 })) }
+      ]
+    }
+  }
+  const result = await worker.getWrkExtData({
+    query: { key: 'workers-count', start: 1, end: 2000000000000 }
+  })
+  t.ok(Array.isArray(result))
+  t.is(result[0].count, 3)
+})
+
+test('WrkMinerPoolRackF2Pool: getWrkExtData workers from db with name filter', async (t) => {
+  const worker = createMockWorker()
+  worker.workersDb = {
+    createReadStream () {
+      return [
+        {
+          value: Buffer.from(JSON.stringify({
+            ts: 1000,
+            workers: [
+              { name: 'keep', host: '1.1.1.1' },
+              { name: 'drop', host: '2.2.2.2' }
+            ]
+          }))
+        }
+      ]
+    }
+  }
+  const result = await worker.getWrkExtData({
+    query: { key: 'workers', start: 1, end: 2000000000000, name: 'keep' }
+  })
+  t.ok(Array.isArray(result))
+  t.is(result.length, 1)
+  t.is(result[0].workers.length, 1)
+  t.is(result[0].workers[0].name, 'keep')
+  t.is(result[0].workers[0].poolType, POOL_TYPE)
+})
+
+test('WrkMinerPoolRackF2Pool: getWrkExtData stats omits appendPoolType when stats missing', async (t) => {
+  const worker = createMockWorker()
+  worker.data.statsData = { ts: 1000 }
+
+  const result = await worker.getWrkExtData({ query: { key: 'stats' } })
+  t.ok(result)
+  t.is(result.ts, 1000)
+  t.is(result.stats, undefined)
+})
+
+test('WrkMinerPoolRackF2Pool: getWrkExtData stats-history with appendPoolType', async (t) => {
+  const worker = createMockWorker()
+  worker.statsDb = {
+    createReadStream () {
+      return [
+        {
+          value: Buffer.from(JSON.stringify({
+            ts: new Date('2024-01-01T00:10:00Z').getTime(),
+            stats: [{ hashrate: 1000000, hashrate_1h: 1000000 }]
+          }))
+        }
+      ]
+    }
+  }
+
+  const result = await worker.getWrkExtData({
+    query: { key: 'stats-history', start: 1, end: 2000000000000 }
+  })
+  t.ok(Array.isArray(result))
+  t.is(result[0].stats[0].poolType, POOL_TYPE)
+})
+
+test('WrkMinerPoolRackF2Pool: getWrkExtData stats-history with interval aggregation', async (t) => {
+  const worker = createMockWorker()
+  worker.statsDb = {
+    createReadStream () {
+      return [
+        {
+          value: Buffer.from(JSON.stringify({
+            ts: new Date('2024-01-01T00:10:00Z').getTime(),
+            stats: [
+              { hashrate: 1000000, hashrate_1h: 1000000 },
+              { hashrate: 2000000, hashrate_1h: 2000000 }
+            ]
+          }))
+        },
+        {
+          value: Buffer.from(JSON.stringify({
+            ts: new Date('2024-01-01T00:20:00Z').getTime(),
+            stats: [
+              { hashrate: 3000000, hashrate_1h: 3000000 },
+              { hashrate: 4000000, hashrate_1h: 4000000 }
+            ]
+          }))
+        }
+      ]
+    }
+  }
+
+  const result = await worker.getWrkExtData({
+    query: { key: 'stats-history', start: 1, end: 2000000000000, interval: '30m' }
+  })
+  t.ok(Array.isArray(result))
+  t.ok(result.length >= 1)
+  result.forEach(row => {
+    if (row.stats) {
+      row.stats.forEach(s => t.is(s.poolType, POOL_TYPE))
+    }
+  })
 })
 
 test('WrkMinerPoolRackF2Pool: getWrkExtData should return default data for unknown key', async (t) => {
@@ -503,6 +686,31 @@ test('WrkMinerPoolRackF2Pool: getYearlyBalances should cache non-current months'
   t.ok(callCount >= 0) // At least some calls for current month
 })
 
+test('WrkMinerPoolRackF2Pool: getYearlyBalances should zero balance on fetch error', async (t) => {
+  const worker = createMockWorker()
+  worker.data.yearlyBalances = {}
+  worker.f2poolApi.getTransactions = async () => {
+    throw new Error('ERR_API')
+  }
+  const result = await worker.getYearlyBalances('testuser')
+  t.ok(Array.isArray(result))
+  result.forEach(({ balance }) => t.is(balance, 0))
+})
+
+test('WrkMinerPoolRackF2Pool: fetchStats handles null balance and empty hashrate history', async (t) => {
+  const worker = createMockWorker()
+  worker.data.workersData.workers = []
+  worker.f2poolApi.getBalance = async () => null
+  worker.f2poolApi.getHashRateHistory = async () => null
+  const time = new Date('2024-01-01T00:00:00Z')
+  await worker.fetchStats(time)
+  const stat = worker.data.statsData.stats[0]
+  t.ok(stat)
+  t.is(stat.hashrate, 0)
+  t.is(stat.hashrate_1h, 0)
+  t.is(stat.hashrate_24h, 0)
+})
+
 test('WrkMinerPoolRackF2Pool: fetchData should handle 1M scheduler', async (t) => {
   const worker = createMockWorker()
   worker.data.workersData.workers = []
@@ -547,4 +755,96 @@ test('WrkMinerPoolRackF2Pool: fetchData should handle errors gracefully', async 
 
   t.ok(worker._errors)
   t.is(worker._errors[0].msg, 'ERR_DATA_FETCH')
+})
+
+function createFakeBee () {
+  const m = new Map()
+  return {
+    async get (key) {
+      const v = m.get(Buffer.from(key).toString('hex'))
+      return v ? { value: v } : null
+    },
+    async put (key, val) {
+      m.set(Buffer.from(key).toString('hex'), val)
+    },
+    createReadStream ({ gte, lte } = {}) {
+      const items = [...m.entries()]
+        .map(([h, v]) => ({ k: Buffer.from(h, 'hex'), value: v }))
+        .filter(({ k }) => (!gte || Buffer.compare(k, gte) >= 0) && (!lte || Buffer.compare(k, lte) <= 0))
+        .sort((a, b) => Buffer.compare(a.k, b.k))
+      return (async function * () {
+        for (const it of items) yield { value: it.value }
+      })()
+    }
+  }
+}
+
+test('WrkMinerPoolRackF2Pool: getF2poolStatus returns online when API responds', async (t) => {
+  const worker = createMockWorker()
+  t.is(await worker.getF2poolStatus(), 'online')
+})
+
+test('WrkMinerPoolRackF2Pool: getF2poolStatus returns offline when API throws', async (t) => {
+  const worker = createMockWorker()
+  worker.f2poolApi.getHashRateInfo = async () => { throw new Error('unreachable') }
+  t.is(await worker.getF2poolStatus(), 'offline')
+})
+
+test('WrkMinerPoolRackF2Pool: getF2poolStatus returns null when no accounts', async (t) => {
+  const worker = createMockWorker(
+    { f2pool: { accounts: [], apiSecret: 's', apiUrl: 'http://x' } },
+    { rack: 'rack-1' }
+  )
+  t.is(await worker.getF2poolStatus(), null)
+})
+
+test('WrkMinerPoolRackF2Pool: getComponentStatus reports f2pool status', async (t) => {
+  const worker = createMockWorker()
+  t.alike(await worker.getComponentStatus(), { f2pool: 'online' })
+})
+
+test('WrkMinerPoolRackF2Pool: evaluateAlerts raises and exposes F2pool_Offline', async (t) => {
+  const worker = createMockWorker()
+  worker.data.alertsData = { ts: 0, alerts: [] }
+  worker.data.alertsPrev = {}
+  worker.alertsHistoryDb = createFakeBee()
+  worker.f2poolApi.getHashRateInfo = async () => { throw new Error('down') }
+
+  const active = await worker.evaluateAlerts(1000)
+  t.is(active.length, 1)
+  t.is(active[0].name, 'F2pool_Offline')
+
+  const current = await worker.getWrkExtData({ query: { key: 'alerts' } })
+  t.is(current.alerts.length, 1)
+  t.is(current.alerts[0].name, 'F2pool_Offline')
+
+  const history = await worker.getWrkExtData({ query: { key: 'alerts-history', start: 1, end: 5000 } })
+  t.is(history.length, 1)
+  t.is(history[0].alerts[0].name, 'F2pool_Offline')
+})
+
+test('WrkMinerPoolRackF2Pool: evaluateAlerts keeps stable identity and one history bucket', async (t) => {
+  const worker = createMockWorker()
+  worker.data.alertsData = { ts: 0, alerts: [] }
+  worker.data.alertsPrev = {}
+  worker.alertsHistoryDb = createFakeBee()
+  worker.f2poolApi.getHashRateInfo = async () => { throw new Error('down') }
+
+  const first = (await worker.evaluateAlerts(1000))[0]
+  const second = (await worker.evaluateAlerts(2000))[0]
+  t.is(second.createdAt, first.createdAt, 'createdAt stays stable')
+  t.is(second.uuid, first.uuid, 'uuid stays stable')
+
+  const history = await worker.getWrkExtData({ query: { key: 'alerts-history', start: 1, end: 5000 } })
+  t.is(history.length, 1, 'no duplicate history bucket')
+})
+
+test('WrkMinerPoolRackF2Pool: evaluateAlerts raises nothing when reachable', async (t) => {
+  const worker = createMockWorker()
+  worker.data.alertsData = { ts: 0, alerts: [] }
+  worker.data.alertsPrev = {}
+  worker.alertsHistoryDb = createFakeBee()
+
+  const active = await worker.evaluateAlerts(1000)
+  t.is(active.length, 0)
 })
