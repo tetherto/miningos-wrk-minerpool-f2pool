@@ -1,6 +1,6 @@
 {
   "name": "@tetherto/miningos-wrk-minerpool-f2pool",
-  "version": "0.0.1",
+  "version": "1.1.0",
   "description": "F2Pool miner pool worker",
   "keywords": [
     "tether"
@@ -16,7 +16,7 @@
     "url": "https://github.com/tetherto/miningos-wrk-minerpool-f2pool/issues"
   },  
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "files": [
     "worker.js",
