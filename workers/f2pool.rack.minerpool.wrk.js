@@ -214,8 +214,8 @@ class WrkMinerPoolRackF2Pool extends TetherWrkBase {
 
   async fetchTransactions () {
     let transactions = []
-    const startTime = new Date().setHours(0, 0, 0, 0)
-    const endTime = Date.now()
+    const endTime = new Date().setHours(0, 0, 0, 0)
+    const startTime = endTime - HOURS_24_MS
     for (const username of this.accounts) {
       try {
         let dailyTransactions = await this.f2poolApi.getTransactions(startTime, endTime, TRANSACTION_TYPES.REVENUE, username)
