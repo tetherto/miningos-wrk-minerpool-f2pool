@@ -38,18 +38,18 @@
     "dev": "node worker.js --wtype wrk-minerpool-rack-f2pool --env development --rack rack-1"
   },
   "dependencies": {
-    "@bitfinex/bfx-svc-boot-js": "1.2.0",
-    "@bitfinex/lib-js-util-base": "git+https://github.com/bitfinexcom/lib-js-util-base.git",
-    "@bitfinex/bfx-facs-http": "git+https://github.com/bitfinexcom/bfx-facs-http.git",
-    "@bitfinex/bfx-facs-scheduler": "git+https://github.com/bitfinexcom/bfx-facs-scheduler.git",
+    "@bitfinex/bfx-svc-boot-js": "1.3.1",
+    "@bitfinex/lib-js-util-base": "^2.1.0",
+    "@bitfinex/bfx-facs-http": "^1.1.0",
+    "@bitfinex/bfx-facs-scheduler": "^1.0.0",
     "mingo": "6.5.6",
-    "@tetherto/tether-wrk-base": "git+https://github.com/tetherto/tether-wrk-base.git#v1.0.0"
+    "@tetherto/tether-wrk-base": "^2.0.1"
   },
   "devDependencies": {
     "@fastify/secure-session": "8.3.0",
     "brittle": "3.16.3",
     "date-fns": "3.6.0",
-    "fastify": "5.8.5",
+    "fastify": "5.12.1",
     "@tetherto/miningos-mock-control-service": "git+https://github.com/tetherto/miningos-mock-control-service.git",
     "standard": "17.1.2"
   }

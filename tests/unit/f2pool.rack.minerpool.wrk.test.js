@@ -848,3 +848,20 @@ test('WrkMinerPoolRackF2Pool: evaluateAlerts raises nothing when reachable', asy
   const active = await worker.evaluateAlerts(1000)
   t.is(active.length, 0)
 })
+
+test('WrkMinerPoolRackF2Pool: fetchTransactions fetches the previous full day', async (t) => {
+  const worker = createMockWorker()
+  worker.transactionsDb = { put: async () => {} }
+  let window
+  worker.f2poolApi.getTransactions = async (start, end) => {
+    window = { start, end }
+    return []
+  }
+
+  await worker.fetchTransactions()
+
+  const midnight = new Date().setHours(0, 0, 0, 0)
+  t.is(window.end, midnight)
+  t.is(window.start, midnight - 24 * 60 * 60 * 1000)
+  t.is(worker._dbCalls[0].ts, window.start)
+})
