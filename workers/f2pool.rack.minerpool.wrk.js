@@ -95,7 +95,7 @@ class WrkMinerPoolRackF2Pool extends TetherWrkBase {
           await this.saveStats(time)
           break
         case SCHEDULER_TIMES._1D.key:
-          await this.fetchTransactions()
+          await this.fetchTransactions(time)
           await this.saveWorkers(time)
           break
       }
@@ -212,13 +212,14 @@ class WrkMinerPoolRackF2Pool extends TetherWrkBase {
     await this._saveToDb(this.workersCountDb, ts, { ts, count: workers.length })
   }
 
-  async fetchTransactions () {
+  async fetchTransactions (time) {
     let transactions = []
-    const endTime = new Date().setHours(0, 0, 0, 0)
-    const startTime = endTime - HOURS_24_MS
+    // transactions data is available at the end of UTC day instead of hourly
+    const end = Math.floor(time.getTime() / 1000) * 1000
+    const start = end - HOURS_24_MS
     for (const username of this.accounts) {
       try {
-        let dailyTransactions = await this.f2poolApi.getTransactions(startTime, endTime, TRANSACTION_TYPES.REVENUE, username)
+        let dailyTransactions = await this.f2poolApi.getTransactions(start, end, TRANSACTION_TYPES.REVENUE, username)
         dailyTransactions = dailyTransactions.map(t => ({ username, ...t }))
         transactions = transactions.concat(dailyTransactions)
       } catch (e) {
@@ -226,7 +227,11 @@ class WrkMinerPoolRackF2Pool extends TetherWrkBase {
       }
     }
 
-    await this._saveToDb(this.transactionsDb, startTime, { ts: startTime, transactions })
+    // save transaction ts to be able to aggregate for different timezones
+    for (const transaction of transactions) {
+      const ts = new Date(transaction.ts).getTime()
+      await this._saveToDb(this.transactionsDb, ts, { ts, transactions: [transaction] })
+    }
   }
 
   async getYearlyBalances (username) {
