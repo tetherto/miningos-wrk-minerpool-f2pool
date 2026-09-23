@@ -76,8 +76,8 @@ function createMockWorker (conf, ctx) {
       }
     ],
     getTransactions: async (start, end, type, username) => [
-      { id: '1', changed_balance: 100, satoshis_net_earned: 1000000 },
-      { id: '2', changed_balance: 200, satoshis_net_earned: 2000000 }
+      { id: '1', changed_balance: 100, satoshis_net_earned: 1000000, ts: '2023-12-31T12:00:00Z' },
+      { id: '2', changed_balance: 200, satoshis_net_earned: 2000000, ts: '2023-12-31T18:00:00Z' }
     ]
   }
 
@@ -628,20 +628,17 @@ test('WrkMinerPoolRackF2Pool: fetchTransactions should save transactions', async
   const worker = createMockWorker()
   worker.transactionsDb = { put: async () => {} }
 
-  await worker.fetchTransactions()
+  const time = new Date('2024-01-01T00:00:00Z')
+  await worker.fetchTransactions(time)
 
   t.ok(worker._dbCalls)
-  t.is(worker._dbCalls.length, 1)
+  t.is(worker._dbCalls.length, 2)
   t.is(worker._dbCalls[0].db, worker.transactionsDb)
-  const savedData = worker._dbCalls[0].data
-  // Check if data is a Buffer or already an object
-  const parsedData = Buffer.isBuffer(savedData) ? JSON.parse(savedData.toString()) : savedData
-  t.ok(parsedData.transactions || (savedData?.transactions))
-  const transactions = parsedData.transactions || savedData.transactions
-  if (transactions) {
-    t.is(transactions.length, 2)
-    t.is(transactions[0].username, 'testuser')
-  }
+  t.is(worker._dbCalls[0].ts, new Date('2023-12-31T12:00:00Z').getTime())
+  t.is(worker._dbCalls[1].ts, new Date('2023-12-31T18:00:00Z').getTime())
+  t.is(worker._dbCalls[0].data.transactions.length, 1)
+  t.is(worker._dbCalls[0].data.transactions[0].username, 'testuser')
+  t.is(worker._dbCalls[1].data.transactions.length, 1)
 })
 
 test('WrkMinerPoolRackF2Pool: fetchTransactions should handle errors gracefully', async (t) => {
@@ -651,7 +648,8 @@ test('WrkMinerPoolRackF2Pool: fetchTransactions should handle errors gracefully'
     throw new Error('API Error')
   }
 
-  await worker.fetchTransactions()
+  const time = new Date('2024-01-01T00:00:00Z')
+  await worker.fetchTransactions(time)
 
   t.ok(worker._errors)
   t.is(worker._errors.length, 1)
@@ -855,13 +853,14 @@ test('WrkMinerPoolRackF2Pool: fetchTransactions fetches the previous full day', 
   let window
   worker.f2poolApi.getTransactions = async (start, end) => {
     window = { start, end }
-    return []
+    return [{ id: '1', changed_balance: 100, ts: '2023-12-31T12:00:00Z' }]
   }
 
-  await worker.fetchTransactions()
+  const time = new Date('2024-01-01T00:00:00.500Z')
+  await worker.fetchTransactions(time)
 
-  const midnight = new Date().setHours(0, 0, 0, 0)
-  t.is(window.end, midnight)
-  t.is(window.start, midnight - 24 * 60 * 60 * 1000)
-  t.is(worker._dbCalls[0].ts, window.start)
+  const end = Math.floor(time.getTime() / 1000) * 1000
+  t.is(window.end, end)
+  t.is(window.start, end - 24 * 60 * 60 * 1000)
+  t.is(worker._dbCalls[0].ts, new Date('2023-12-31T12:00:00Z').getTime())
 })
